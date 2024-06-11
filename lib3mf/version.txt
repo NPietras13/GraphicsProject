@@ -1,0 +1,4 @@
+[lib3mf_sdk]
+BuildNumber = d4fab5ecf2fb12330e1f6058c4cbd0ffd03cee77
+GITBranch = release/2.3.1
+GITRevision = d4fab5ecf2fb12330e1f6058c4cbd0ffd03cee77
