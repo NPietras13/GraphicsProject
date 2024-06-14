@@ -23,6 +23,14 @@
 
 using namespace std;
 
+float bounceTime = 0.0f; 
+const float bounceSpeed = 2.0f; 
+const float bounceHeight = 0.5f; 
+
+float eyeLeftX, eyeLeftY, eyeRightX, eyeRightY;
+float eyeRotationAngle = glm::radians(180.0f);
+
+
 float aspectRatio = 1;
 ShaderProgram* sp;
 
@@ -30,6 +38,8 @@ GLuint tex_ground; // Tekstura dla dolnych kostek
 GLuint tex_snake;  // Tekstura dla kostki poruszanej strzałkami
 GLuint tex_food;  // Tekstura dla kostki jedzenia
 GLuint tex_sky;  // Tekstura dla kostki jedzenia
+GLuint tex_eye; // Tekstura dla górnej ściany kostki
+
 
 
 float* vertices = myCubeVertices;
@@ -39,18 +49,18 @@ float* colors = myCubeColors;
 int vertexCount = myCubeVertexCount;
 
 
-float center_x = 0.0f; // Pozycja kostki w osi X
-float center_y = 0.0f; // Pozycja kostki w osi Y
+float center_x = 0.0f;
+float center_y = 0.0f; 
 
-float random_x; // Losowa pozycja dodatkowej kostki w osi X
-float random_y; // Losowa pozycja dodatkowej kostki w osi Y
+float random_x; 
+float random_y; 
 
 enum Direction { NONE, LEFT, RIGHT, UP, DOWN };
 queue<Direction> moveQueue;
 Direction currentDirection;
 
 double lastTime = 0;
-const float movementSpeed = 2.0f; // units per second
+const float movementSpeed = 2.0f;
 
 glm::vec3 cameraPos;
 glm::vec3 cameraTarget;
@@ -69,20 +79,20 @@ namespace std {
 std::unordered_set<std::pair<int, int>> snakePositions;
 
 
-// List of additional cubes following the moving cube
+
 vector<pair<float, float>> additionalCubes;
 vector<bool> canMove;
 std::vector<pair<float, float>> wallCubes;
 
 typedef std::pair<float, float> FloatPair;
 
-// Define a queue of float pairs
+
 typedef std::queue<FloatPair> QueueOfFloatPairs;
 
-// Define a vector of queues of float pairs
+
 std::vector<QueueOfFloatPairs> vectorOfQueues;
 
-// Vertex and index data for the 3MF model
+
 std::vector<float> modelVertices;
 std::vector<unsigned int> modelIndices;
 std::vector<float> modelTexCoords;
@@ -114,7 +124,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
                 moveQueue.push(RIGHT);
                 break;
             default:
-                moveQueue.push(LEFT); // Default to LEFT if no direction is set
+                moveQueue.push(LEFT); 
                 break;
             }
         }
@@ -133,7 +143,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
                 moveQueue.push(LEFT);
                 break;
             default:
-                moveQueue.push(RIGHT); // Default to RIGHT if no direction is set
+                moveQueue.push(RIGHT); 
                 break;
             }
         }
@@ -160,19 +170,18 @@ bool load3MFModel(const std::string& filename, std::vector<float>& vertices, std
         meshObject->GetVertices(vertexArray);
         meshObject->GetTriangleIndices(triangleArray);
 
-        std::cout << "Vertices: " << std::endl;
+
         for (const auto& vertex : vertexArray) {
             vertices.push_back(vertex.m_Coordinates[0]);
             vertices.push_back(vertex.m_Coordinates[1]);
             vertices.push_back(vertex.m_Coordinates[2]);
 
 
-            // Manually define texture coordinates (example: projecting vertices onto the XY plane)
-            texCoords.push_back(vertex.m_Coordinates[0]); // U coordinate
-            texCoords.push_back(vertex.m_Coordinates[1]); // V coordinate
+            texCoords.push_back(vertex.m_Coordinates[0]); 
+            texCoords.push_back(vertex.m_Coordinates[1]); 
         }
 
-        std::cout << "Indices: " << std::endl;
+
         for (const auto& triangle : triangleArray) {
             indices.push_back(triangle.m_Indices[0]);
             indices.push_back(triangle.m_Indices[1]);
@@ -205,6 +214,55 @@ GLuint readTexture(const char* filename) {
     return tex;
 }
 
+void resetGame() {
+
+    center_x = 0.0f;
+    center_y = 0.0f;
+
+    eyeRotationAngle = glm::radians(180.0f);
+    eyeLeftX = center_x - 0.5f;
+    eyeLeftY = center_y + 0.5f;
+    eyeRightX = center_x + 0.5f;
+    eyeRightY = center_y + 0.5f;
+
+ 
+    currentDirection = NONE;
+
+
+    while (!moveQueue.empty()) {
+        moveQueue.pop();
+    }
+
+  
+    additionalCubes.clear();
+    vectorOfQueues.clear();
+    canMove.clear();
+
+
+    snakePositions.clear();
+    snakePositions.insert({ static_cast<int>(center_x), static_cast<int>(center_y) });
+
+
+    cameraPos = glm::vec3(center_x, center_y - 10.0f, 5.0f);
+    cameraTarget = glm::vec3(center_x, center_y, 2.0f);
+    smoothCameraPos = cameraPos;
+    smoothCameraTarget = cameraTarget;
+
+
+    bool positionOccupied;
+    do {
+        positionOccupied = false;
+        random_x = (rand() % 11 - 5) * 2.0f;
+        random_y = (rand() % 11 - 5) * 2.0f;
+
+        
+        if (snakePositions.count({ static_cast<int>(random_x), static_cast<int>(random_y) }) > 0) {
+            positionOccupied = true;
+        }
+    } while (positionOccupied);
+}
+
+
 void initOpenGLProgram(GLFWwindow* window) {
     glClearColor(0, 0, 0, 1);
     glEnable(GL_DEPTH_TEST);
@@ -212,9 +270,16 @@ void initOpenGLProgram(GLFWwindow* window) {
     glfwSetKeyCallback(window, keyCallback);
     sp = new ShaderProgram("v_simplest.glsl", NULL, "f_simplest.glsl");
     tex_ground = readTexture("textures/ground.png");
-    tex_food = readTexture("textures/snake.png");
+    tex_food = readTexture("textures/food.png");
     tex_snake = readTexture("textures/snake.png");
     tex_sky = readTexture("textures/sky.png");
+    tex_eye = readTexture("textures/eye.png");
+
+    eyeLeftX = center_x - 0.5f;
+    eyeLeftY = center_y + 0.5f;
+    eyeRightX = center_x + 0.5f;
+    eyeRightY = center_y + 0.5f;
+
 
     if (!load3MFModel("models/sd.3mf", modelVertices, modelIndices, modelTexCoords)) {
         std::cerr << "Failed to load 3MF model" << std::endl;
@@ -262,10 +327,11 @@ void drawCube(glm::mat4 M, glm::mat4 V, glm::mat4 P, GLuint texture) {
     glDisableVertexAttribArray(sp->a("texCoord"));
 }
 
+
 void draw3MFModel(glm::mat4 M, glm::mat4 V, glm::mat4 P, GLuint texture) {
     sp->use();
 
-    float scalingFactor = 0.02f;
+    float scalingFactor = 0.01f;
     M = glm::scale(M, glm::vec3(scalingFactor, scalingFactor, scalingFactor));
 
     glUniformMatrix4fv(sp->u("P"), 1, GL_FALSE, glm::value_ptr(P));
@@ -316,7 +382,7 @@ bool isAtFullPosition(float x, float y) {
 }
 
 std::deque<pair<float, float>> positionQueue;
-const float positionUpdateInterval = 2.0f; // Distance interval to store positions
+const float positionUpdateInterval = 2.0f; 
 float positionUpdateAccumulator = 0.0f;
 
 
@@ -351,10 +417,38 @@ void updateTailPositions() {
 }
 
 
-void printPositions() {
-    cout << "Main cube position: (" << center_x << ", " << center_y << ")" << endl;
-    for (size_t i = 0; i < additionalCubes.size(); i++) {
-        cout << "Additional cube " << i + 1 << " position: (" << additionalCubes[i].first << ", " << additionalCubes[i].second << ")" << endl;
+void setEyePositions() {
+    switch (currentDirection) {
+    case LEFT:
+        eyeLeftX = center_x - 0.5f;
+        eyeLeftY = center_y + 0.5f;
+        eyeRightX = center_x - 0.5f;
+        eyeRightY = center_y - 0.5f;
+        eyeRotationAngle = glm::radians(-90.0f);
+        break;
+    case RIGHT:
+        eyeLeftX = center_x + 0.5f;
+        eyeLeftY = center_y + 0.5f;
+        eyeRightX = center_x + 0.5f;
+        eyeRightY = center_y - 0.5f;
+        eyeRotationAngle = glm::radians(90.0f);
+        break;
+    case UP:
+        eyeLeftX = center_x - 0.5f;
+        eyeLeftY = center_y + 0.5f;
+        eyeRightX = center_x + 0.5f;
+        eyeRightY = center_y + 0.5f;
+        eyeRotationAngle = glm::radians(180.0f);
+        break;
+    case DOWN:
+        eyeLeftX = center_x - 0.5f;
+        eyeLeftY = center_y - 0.5f;
+        eyeRightX = center_x + 0.5f;
+        eyeRightY = center_y - 0.5f;
+        eyeRotationAngle = glm::radians(0.0f);
+        break;
+    default:
+        break;
     }
 }
 
@@ -362,34 +456,50 @@ void printPositions() {
 float moveAmount = 0.05f;
 float moveAcumulator = 0.0f;
 
+float moveDecumulator = 0.0f;
+
+
 void updatePosition(float deltaTime) {
     if (currentDirection == NONE) return;
+
+    bounceTime += deltaTime * bounceSpeed;
 
     if (canMove.size() > 0)
         moveAcumulator += moveAmount;
 
+    if (moveDecumulator > 0.0f)
+        moveDecumulator -= moveAmount;
+    if (moveDecumulator < 0.0f)
+        moveDecumulator = 0.0f;
+
     if (canMove.size() > additionalCubes.size() - 1 && moveAcumulator >= 1.8f)
         canMove[additionalCubes.size() - 1] = true;
 
-    // Previous position
     int prev_x = static_cast<int>(center_x);
     int prev_y = static_cast<int>(center_y);
 
-    // Move the main cube based on the current direction
-    if (currentDirection == LEFT) center_x -= moveAmount;
-    if (currentDirection == RIGHT) center_x += moveAmount;
-    if (currentDirection == UP) center_y += moveAmount;
-    if (currentDirection == DOWN) center_y -= moveAmount;
 
-    // Round to the nearest grid position
+    setEyePositions();
+    if (currentDirection == LEFT) { 
+        center_x -= moveAmount; 
+    }
+    if (currentDirection == RIGHT) {
+        center_x += moveAmount;
+    }
+    if (currentDirection == UP) {
+        center_y += moveAmount;
+    }
+    if (currentDirection == DOWN) {
+        center_y -= moveAmount;
+    }
+
+
     center_x = round(center_x * 100.0f) / 100.0f;
     center_y = round(center_y * 100.0f) / 100.0f;
 
-    // New position
     int new_x = static_cast<int>(center_x);
     int new_y = static_cast<int>(center_y);
 
-    // Update snake positions set
     snakePositions.erase({ prev_x, prev_y });
     snakePositions.insert({ new_x, new_y });
 
@@ -409,20 +519,23 @@ void updatePosition(float deltaTime) {
         moveQueue.pop();
     }
 
-    // Check if the main cube goes out of the board
     if (center_x < -10.0f || center_x > 10.0f || center_y < -10.0f || center_y > 10.0f) {
-        std::cout << "Main cube is out of the board!" << std::endl;
+        std::cout << "Wypadles za mape" << std::endl;
+        resetGame();
+        return;
+
     }
 
-    // Check for collision with additional cubes
     for (const auto& cube : additionalCubes) {
-        if (new_x == static_cast<int>(cube.first) && new_y == static_cast<int>(cube.second)) {
-            std::cout << "Collision detected with additional cube at position: (" << cube.first << ", " << cube.second << ")" << std::endl;
+        if (new_x == static_cast<int>(cube.first) && new_y == static_cast<int>(cube.second) && moveDecumulator == 0.0f) {
+            std::cout << "Udziabales sie" << std::endl;
+            resetGame();
+            return;
         }
     }
 
-    // Check for collision with the food cube
     if (new_x == static_cast<int>(random_x) && new_y == static_cast<int>(random_y)) {
+        moveDecumulator = 2.0f;
         if (additionalCubes.empty()) {
             additionalCubes.push_back(make_pair(center_x, center_y));
             QueueOfFloatPairs queue1;
@@ -440,18 +553,12 @@ void updatePosition(float deltaTime) {
             moveAcumulator = 0.0f;
         }
 
-        // Print the position of the new cube and all cubes
-        std::cout << "Collision detected. New cube added at position: (" << center_x << ", " << center_y << ")" << std::endl;
-        printPositions();
-
-        // Generate new random position for the food cube
         bool positionOccupied;
         do {
             positionOccupied = false;
             random_x = (rand() % 11 - 5) * 2.0f;
             random_y = (rand() % 11 - 5) * 2.0f;
 
-            // Check if the new position is occupied by the main cube or any additional cubes
             if (snakePositions.count({ static_cast<int>(random_x), static_cast<int>(random_y) }) > 0) {
                 positionOccupied = true;
             }
@@ -464,7 +571,7 @@ void updatePosition(float deltaTime) {
 
 void drawSky(float angle_x, float angle_y, glm::mat4 V, glm::mat4 P) {
     glm::mat4 M_wall = glm::translate(glm::mat4(1.0f), glm::vec3(0, 70, 0));
-    float scalingFactor = 50.0f; // Scale down to half the size
+    float scalingFactor = 50.0f; 
     M_wall = glm::scale(M_wall, glm::vec3(scalingFactor, scalingFactor, scalingFactor));
     M_wall = glm::rotate(M_wall, angle_y, glm::vec3(1.0f, 0.0f, 0.0f));
     M_wall = glm::rotate(M_wall, angle_x, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -500,15 +607,15 @@ void drawSky(float angle_x, float angle_y, glm::mat4 V, glm::mat4 P) {
  
 }
 
+
 void drawScene(GLFWwindow* window, float angle_x = 0, float angle_y = 0) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Camera settings
     glm::vec3 newCameraPos;
     glm::vec3 newCameraTarget(center_x, center_y, 2.0f);
-    glm::vec3 up(0.0f, 0.0f, 1.0f); // Up direction
+    glm::vec3 up(0.0f, 0.0f, 1.0f); 
 
-    // Adjust camera position based on the direction of movement
+   
     float cameraDistance = 10.0f;
     float cameraHeight = 5.0f;
 
@@ -526,11 +633,11 @@ void drawScene(GLFWwindow* window, float angle_x = 0, float angle_y = 0) {
         newCameraPos = glm::vec3(center_x, center_y + cameraDistance, cameraHeight);
         break;
     default:
-        newCameraPos = glm::vec3(center_x, center_y - cameraDistance, cameraHeight); // Default to UP
+        newCameraPos = glm::vec3(center_x, center_y - cameraDistance, cameraHeight); 
         break;
     }
 
-    // Smoothly interpolate the camera position and target
+
     smoothCameraPos = glm::mix(smoothCameraPos, newCameraPos, cameraLerpSpeed);
     smoothCameraTarget = glm::mix(smoothCameraTarget, newCameraTarget, cameraLerpSpeed);
 
@@ -558,6 +665,24 @@ void drawScene(GLFWwindow* window, float angle_x = 0, float angle_y = 0) {
     M_center = glm::rotate(M_center, angle_x, glm::vec3(0.0f, 1.0f, 0.0f));
     drawCube(M_center, V, P, tex_snake);
 
+    float eyeScalingFactor = 0.3f;
+
+    glm::mat4 M_eyeLeft = glm::translate(glm::mat4(1.0f), glm::vec3(eyeLeftX, eyeLeftY, 2.8f));
+    M_eyeLeft = glm::rotate(M_eyeLeft, eyeRotationAngle, glm::vec3(0.0f, 0.0f, 1.0f));
+    M_eyeLeft = glm::scale(M_eyeLeft, glm::vec3(eyeScalingFactor, eyeScalingFactor, eyeScalingFactor));
+    M_eyeLeft = glm::rotate(M_eyeLeft, angle_y, glm::vec3(1.0f, 0.0f, 0.0f));
+    M_eyeLeft = glm::rotate(M_eyeLeft, angle_x, glm::vec3(0.0f, 1.0f, 0.0f));
+    drawCube(M_eyeLeft, V, P, tex_eye);
+
+    // Draw right eye
+    glm::mat4 M_eyeRight = glm::translate(glm::mat4(1.0f), glm::vec3(eyeRightX, eyeRightY, 2.8f));
+    M_eyeRight = glm::rotate(M_eyeRight, eyeRotationAngle, glm::vec3(0.0f, 0.0f, 1.0f));
+    M_eyeRight = glm::scale(M_eyeRight, glm::vec3(eyeScalingFactor, eyeScalingFactor, eyeScalingFactor));
+    M_eyeRight = glm::rotate(M_eyeRight, angle_y, glm::vec3(1.0f, 0.0f, 0.0f));
+    M_eyeRight = glm::rotate(M_eyeRight, angle_x, glm::vec3(0.0f, 1.0f, 0.0f));
+    drawCube(M_eyeRight, V, P, tex_eye);
+
+
     for (auto& cube : additionalCubes) {
         glm::mat4 M_additional = glm::translate(glm::mat4(1.0f), glm::vec3(cube.first, cube.second, 2.0f));
         M_additional = glm::rotate(M_additional, angle_y, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -565,13 +690,17 @@ void drawScene(GLFWwindow* window, float angle_x = 0, float angle_y = 0) {
         drawCube(M_additional, V, P, tex_snake);
     }
 
-    glm::mat4 M_random = glm::translate(glm::mat4(1.0f), glm::vec3(random_x, random_y, 2.0f));
+    const float minHeightOffset = 0.2f; 
+    float bounceOffset = sin(bounceTime) * bounceHeight + minHeightOffset;
+
+    glm::mat4 M_random = glm::translate(glm::mat4(1.0f), glm::vec3(random_x, random_y, 2.0f + bounceOffset));
     M_random = glm::rotate(M_random, angle_y, glm::vec3(1.0f, 0.0f, 0.0f));
     M_random = glm::rotate(M_random, angle_x, glm::vec3(0.0f, 1.0f, 0.0f));
-    draw3MFModel(M_random, V, P, tex_food); // Draw the 3MF model with the food texture
+    draw3MFModel(M_random, V, P, tex_food);
 
     glfwSwapBuffers(window);
 }
+
 
 
 int main(void) {
